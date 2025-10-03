@@ -6,7 +6,7 @@ AS = riscv32-unknown-elf-gcc
 OBJCOPY = riscv32-unknown-elf-objcopy
 OBJDUMP = riscv32-unknown-elf-objdump
 
-ARCH = -march=rv32im -mabi=ilp32
+ARCH = -march=rv32im_zicsr -mabi=ilp32
 CFLAGS = $(ARCH) -Os -ffreestanding -nostdlib -Wall -Wextra
 ASFLAGS = $(ARCH)
 LDFLAGS = -T dtekv-script.lds -nostdlib -Wl,--gc-sections
