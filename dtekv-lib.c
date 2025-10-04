@@ -1,61 +1,70 @@
 #include "dtekv-lib.h"
-#define JTAG_UART ((volatile unsigned int*) 0x04000040)
-#define JTAG_CTRL ((volatile unsigned int*) 0x04000044)
 
-void printc(char s){
-    while (((*JTAG_CTRL)&0xffff0000) == 0);
-    *JTAG_UART = s;
+void dtekv_delay(volatile uint32_t n) {
+    while (n--) __asm__ volatile("nop");
 }
-void print(char *s){
-  while (*s != '\0') { printc(*s); s++; }
+
+/* ----- Register-based backend ----- */
+#if USE_VGA_REGS
+void vga_putpx(int x, int y, uint16_t color) {
+    if ((unsigned)x >= VGA_WIDTH || (unsigned)y >= VGA_HEIGHT) return;
+    VGA_REG_X   = (uint32_t)x;
+    VGA_REG_Y   = (uint32_t)y;
+    VGA_REG_CLR = (uint32_t)color;
+    VGA_REG_CMD = 1u;                 /* strobe a write */
 }
-void print_dec(unsigned int x){
-  unsigned divident = 1000000000; char first = 0;
-  do {
-    int dv = x / divident;
-    if (dv != 0) first = 1;
-    if (first != 0) printc(48+dv);
-    x -= dv*divident; divident /= 10;
-  } while (divident != 0);
-  if (first == 0) printc(48);
+
+void vga_clear(uint16_t color) {
+    for (int y = 0; y < VGA_HEIGHT; ++y)
+        for (int x = 0; x < VGA_WIDTH; ++x)
+            vga_putpx(x, y, color);
 }
-void print_hex32 ( unsigned int x){
-  printc('0'); printc('x');
-  for (int i = 7; i >= 0; i--) {
-    char hd = (char) ((x >> (i*4)) & 0xf);
-    if (hd < 10) hd += '0'; else hd += ('A' - 10);
-    printc(hd);
-  }
+
+void vga_wait_vblank(void) {
+    /* If status not implemented, just no-op */
+    volatile uint32_t tmp;
+    (void)tmp;
+    /* Wait for vblank rising edge if available */
+    uint32_t s0 = VGA_REG_STAT & VGA_STAT_VBLANK;
+    do { tmp = VGA_REG_STAT; } while (((tmp & VGA_STAT_VBLANK) == s0));
 }
-void handle_exception ( unsigned arg0, unsigned arg1, unsigned arg2, unsigned arg3, unsigned arg4, unsigned arg5, unsigned mcause, unsigned syscall_num ){
-  switch (mcause){
-    case 0: print("\n[EXCEPTION] Instruction address misalignment. "); break;
-    case 2: print("\n[EXCEPTION] Illegal instruction. "); break;
-    case 11:
-      if (syscall_num == 4) print((char*) arg0);
-      if (syscall_num == 11) printc(arg0);
-      return ;
-    default: print("\n[EXCEPTION] Unknown error. "); break;
-  }
-  print("Exception Address: "); print_hex32(arg0); printc('\n');
-  while (1);
+
+/* ----- Framebuffer backend ----- */
+#elif defined(USE_VGA_FB)
+
+#if VGA_BPP == 1
+static volatile uint8_t  *const fb8  = (volatile uint8_t*)VGA_FB_BASE;
+#elif VGA_BPP == 2
+static volatile uint16_t *const fb16 = (volatile uint16_t*)VGA_FB_BASE;
+#else
+#error "Unsupported VGA_BPP"
+#endif
+
+void vga_putpx(int x, int y, uint16_t color) {
+    if ((unsigned)x >= VGA_WIDTH || (unsigned)y >= VGA_HEIGHT) return;
+#if VGA_BPP == 1
+    fb8[y*VGA_WIDTH + x] = (uint8_t)color;  /* Expect RGB332 value */
+#else
+    fb16[y*VGA_WIDTH + x] = color;          /* RGB565 */
+#endif
 }
-int nextprime( int inval ){
-   int perhapsprime = 0, testfactor, found;
-   if (inval < 3 ){
-     if(inval <= 0) return 1;
-     if(inval == 1) return 2;
-     if(inval == 2) return 3;
-   } else {
-     perhapsprime = ( inval + 1 ) | 1 ;
-   }
-   for( found = 0; found != 1; perhapsprime += 2 ){
-     for( testfactor = 3; testfactor <= (perhapsprime >> 1) + 1; testfactor += 1 ){
-       found = 1;
-       if( (perhapsprime % testfactor) == 0 ){ found = 0; goto check_next; }
-     }
-     check_next:;
-     if( found == 1 ){ return perhapsprime; }
-   }
-   return perhapsprime;
+
+void vga_clear(uint16_t color) {
+#if VGA_BPP == 1
+    for (int y=0; y<VGA_HEIGHT; ++y)
+        for (int x=0; x<VGA_WIDTH; ++x)
+            fb8[y*VGA_WIDTH + x] = (uint8_t)color;
+#else
+    for (int y=0; y<VGA_HEIGHT; ++y)
+        for (int x=0; x<VGA_WIDTH; ++x)
+            fb16[y*VGA_WIDTH + x] = color;
+#endif
 }
+
+void vga_wait_vblank(void) {
+    /* No vblank info: no-op */
+}
+
+#else
+#error "Select a VGA backend: define USE_VGA_REGS or USE_VGA_FB"
+#endif

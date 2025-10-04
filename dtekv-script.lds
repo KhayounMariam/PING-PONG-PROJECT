@@ -1,35 +1,45 @@
-OUTPUT_FORMAT("elf32-littleriscv", "elf32-littleriscv",
-	      "elf32-littleriscv")
-OUTPUT_ARCH(riscv)
+/* Minimal RISC-V linker script for a RAM-only image.
+ * Adjust ORIGIN/LENGTH to your SoC if needed.
+ */
 
+OUTPUT_ARCH(riscv)
 ENTRY(_start)
-STARTUP(boot.o)
 
 MEMORY
 {
-    RAM (xrw)   : ORIGIN = 0x00000000, LENGTH = 32M
+  RAM (rwx) : ORIGIN = 0x80000000, LENGTH = 64K
 }
 
 SECTIONS
 {
-   __stack_size = DEFINED(__stack_size) ? __stack_size : 0x100000;
-   PROVIDE(__stack_size = __stack_size);
-   __heap_size = DEFINED(__heap_size) ? __heap_size : 0x800;
+  . = ORIGIN(RAM);
 
-   . = 0x0;
-   .text : {*(.text*); }
+  .init : {
+    KEEP(*(.init))
+    KEEP(*(.vectors))
+  } > RAM
 
-   .data : { *(.data*)
-             PROVIDE( __global_pointer = . + 0x800 );
-             *(.sdata*)}
+  .text : ALIGN(4) {
+    *(.text.boot*)
+    *(.text*)
+    *(.rodata*)
+  } > RAM
 
-   .bss : { *(.bss) }
-   .rodata : { *(.rodata) }
-   .comment : { *(.comment) }
-   .stack :  {
-   PROVIDE(_stack_begin = .);
-   . = ALIGN(4);
-   . += __stack_size;
-   PROVIDE(_stack_end = .);
-    }
+  .data : ALIGN(4) {
+    *(.data*)
+    *(.sdata*)
+  } > RAM
+
+  .bss (NOLOAD) : ALIGN(4) {
+    __bss_start = .;
+    *(.sbss*)
+    *(.bss*)
+    *(COMMON)
+    __bss_end = .;
+  } > RAM
+
+  .stack (NOLOAD) : ALIGN(16) {
+    . += 4K;           /* 4 KB stack; grow if you need */
+    _stack_top = .;
+  } > RAM
 }

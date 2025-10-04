@@ -1,20 +1,34 @@
-TARGET = main
-OBJS   = boot.o labmain.o dtekv-lib.o pong.o
+# -------- PING-PONG (DTEK-V) --------
+# Toolchain
+CROSS ?= riscv32-unknown-elf
+CC    := $(CROSS)-gcc
+AS    := $(CROSS)-gcc
+LD    := $(CROSS)-gcc
+OBJCOPY := $(CROSS)-objcopy
+OBJDUMP := $(CROSS)-objdump
 
-CC = riscv32-unknown-elf-gcc
-AS = riscv32-unknown-elf-gcc
-OBJCOPY = riscv32-unknown-elf-objcopy
-OBJDUMP = riscv32-unknown-elf-objdump
+# CPU / ABI
+ARCH  := -march=rv32im_zicsr -mabi=ilp32
+CSTD  := -std=c11
 
-ARCH = -march=rv32im_zicsr -mabi=ilp32
-CFLAGS = $(ARCH) -Os -ffreestanding -nostdlib -Wall -Wextra
-ASFLAGS = $(ARCH)
-LDFLAGS = -T dtekv-script.lds -nostdlib -Wl,--gc-sections
+# Common flags
+CFLAGS  := $(ARCH) $(CSTD) -O2 -ffreestanding -nostdlib -fno-builtin -Wall -Wextra -Wno-unused-parameter
+ASFLAGS := $(ARCH) -x assembler-with-cpp -ffreestanding -nostdlib
+LDFLAGS := $(ARCH) -T dtekv-script.lds -nostdlib -Wl,--gc-sections -Wl,-Map=firmware.map
 
-all: $(TARGET).elf $(TARGET).bin $(TARGET).elf.txt
+# Files
+SRCS_C  := dtekv-lib.c pong.c
+SRCS_S  := boot.S labmain.S
+OBJS    := $(SRCS_C:.c=.o) $(SRCS_S:.S=.o)
 
-$(TARGET).elf: $(OBJS) dtekv-script.lds
-	$(CC) $(CFLAGS) $(OBJS) -o $@ $(LDFLAGS)
+# Output
+ELF  := firmware.elf
+BIN  := firmware.bin
+HEX  := firmware.hex
+
+.PHONY: all clean size disasm
+
+all: $(ELF) $(BIN) $(HEX) size
 
 %.o: %.c
 	$(CC) $(CFLAGS) -c $< -o $@
@@ -22,13 +36,22 @@ $(TARGET).elf: $(OBJS) dtekv-script.lds
 %.o: %.S
 	$(AS) $(ASFLAGS) -c $< -o $@
 
-$(TARGET).bin: $(TARGET).elf
+$(ELF): $(OBJS) dtekv-script.lds
+	$(LD) $(LDFLAGS) $(OBJS) -o $@
+
+$(BIN): $(ELF)
 	$(OBJCOPY) -O binary $< $@
 
-$(TARGET).elf.txt: $(TARGET).elf
-	$(OBJDUMP) -d -S $< > $@
+$(HEX): $(ELF)
+	$(OBJCOPY) -O ihex $< $@
+
+size: $(ELF)
+	$(OBJDUMP) -h -d $(ELF) > firmware.lst || true
+	$(CROSS)-size $(ELF) || true
+
+disasm: $(ELF)
+	$(OBJDUMP) -d -S $(ELF) | less
 
 clean:
-	rm -f $(OBJS) $(TARGET).elf $(TARGET).bin $(TARGET).elf.txt
+	rm -f $(OBJS) $(ELF) $(BIN) $(HEX) firmware.map firmware.lst
 
-.PHONY: all clean
