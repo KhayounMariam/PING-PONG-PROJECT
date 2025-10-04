@@ -1,0 +1,84 @@
+
+Discarded input sections
+
+ .data          0x00000000        0x0 dtekv-lib.o
+ .bss           0x00000000        0x0 dtekv-lib.o
+ .text          0x00000000        0x0 pong.o
+ .data          0x00000000        0x0 pong.o
+ .bss           0x00000000        0x0 pong.o
+ .text          0x00000000        0x0 boot.o
+ .data          0x00000000        0x0 boot.o
+ .bss           0x00000000        0x0 boot.o
+ .text          0x00000000        0x8 labmain.o
+ .data          0x00000000        0x0 labmain.o
+ .bss           0x00000000        0x0 labmain.o
+ .riscv.attributes
+                0x00000000       0x31 labmain.o
+
+Memory Configuration
+
+Name             Origin             Length             Attributes
+RAM              0x80000000         0x00010000         xrw
+*default*        0x00000000         0xffffffff
+
+Linker script and memory map
+
+LOAD dtekv-lib.o
+LOAD pong.o
+LOAD boot.o
+LOAD labmain.o
+                0x80000000                        . = ORIGIN (RAM)
+
+.init           0x80000000       0x48
+ *(.init)
+ .init          0x80000000       0x48 boot.o
+                0x80000000                _start
+                0x80000040                trap_vector
+                0x80000044                trap_handler
+ *(.vectors)
+
+.text           0x80000048      0x40c
+ *(.text.boot*)
+ *(.text*)
+ .text          0x80000048       0xf0 dtekv-lib.o
+                0x80000048                dtekv_delay
+                0x8000007c                vga_putpx
+                0x800000b0                vga_clear
+                0x80000104                vga_wait_vblank
+ .text.startup  0x80000138      0x31c pong.o
+                0x80000138                main
+ *(.rodata*)
+
+.rela.dyn       0x80000454        0x0
+ .rela.init     0x80000454        0x0 dtekv-lib.o
+
+.data
+ *(.data*)
+ *(.sdata*)
+
+.bss            0x80000454        0x0
+                0x80000454                        __bss_start = .
+ *(.sbss*)
+ *(.bss*)
+ *(COMMON)
+                0x80000454                        __bss_end = .
+
+.stack          0x80000460     0x1000
+                0x80001460                        . = (. + 0x1000)
+ *fill*         0x80000460     0x1000 
+                0x80001460                        _stack_top = .
+OUTPUT(firmware.elf elf32-littleriscv)
+
+.comment        0x00000000        0xf
+ .comment       0x00000000        0xf dtekv-lib.o
+                                 0x10 (size before relaxing)
+ .comment       0x0000000f       0x10 pong.o
+
+.riscv.attributes
+                0x00000000       0x37
+ .riscv.attributes
+                0x00000000       0x33 dtekv-lib.o
+ .riscv.attributes
+                0x00000033       0x33 pong.o
+ .riscv.attributes
+                0x00000066       0x35 boot.o
